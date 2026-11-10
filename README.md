@@ -32,7 +32,7 @@ The build uses a relative base path and hash-based routing, so `dist/` can be co
 src/
   types/            TypeScript interfaces: events, regions, lessons, questions, progress
   data/             All content, kept separate from the UI
-    historicalEvents.ts   48 curated events, each with sources
+    historicalEvents.ts   50 curated events, each with sources
     regions.ts            9 navigation regions, with eras, polities, people and developments
     polityCentres.ts      approximate centres of historical powers (the globe layer)
     lessons.ts, worksheets.ts, objectives.ts, printingPress.ts, sources.ts
