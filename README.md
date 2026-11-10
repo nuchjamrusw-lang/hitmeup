@@ -13,6 +13,14 @@ npm run preview    # serve the production build
 
 The build uses a relative base path and hash-based routing, so `dist/` can be copied to any static host or school intranet folder without server configuration.
 
+## Deploying to GitHub Pages
+
+The workflow `.github/workflows/deploy-pages.yml` builds and publishes the site on every push to `main`.
+
+1. In the repository, open **Settings → Pages** and set **Source** to **GitHub Actions** (a one-time step).
+2. Merge into `main`, or run the workflow manually from the **Actions** tab.
+3. The site is published at `https://<owner>.github.io/<repo>/`.
+
 ## Features
 
 | Area | What it does |
