@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    @apply bg-paper text-ink font-sans antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  h1, h2, h3, h4 { @apply text-ink; }
+  :focus-visible { @apply outline-none ring-2 ring-bronze ring-offset-2 ring-offset-paper; }
+  ::selection { background: #EADDC8; }
+}
+
+@layer components {
+  .panel { @apply bg-surface border border-line rounded-xl shadow-soft; }
+  .eyebrow { @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted; }
+  .h-display { @apply font-serif text-3xl md:text-[40px] leading-[1.12] tracking-[-0.01em] text-ink; }
+  .h-section { @apply font-serif text-2xl leading-tight text-ink; }
+  .body-copy { @apply text-[15px] leading-7 text-ink-soft; }
+  .chip { @apply inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-0.5 text-xs text-ink-soft; }
+  .divider { @apply border-t border-line; }
+  .range-atlas { @apply w-full appearance-none bg-transparent cursor-pointer; }
+  .range-atlas::-webkit-slider-runnable-track { @apply h-1 rounded-full bg-line; }
+  .range-atlas::-moz-range-track { @apply h-1 rounded-full bg-line; }
+  .range-atlas::-webkit-slider-thumb {
+    @apply appearance-none -mt-[7px] h-[18px] w-[18px] rounded-full border-2 border-surface bg-ink shadow;
+  }
+  .range-atlas::-moz-range-thumb { @apply h-[14px] w-[14px] rounded-full border-2 border-surface bg-ink; }
+}
+
+.scrollbar-thin { scrollbar-width: thin; scrollbar-color: #D8D1C4 transparent; }
+.scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: #D8D1C4; border-radius: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
