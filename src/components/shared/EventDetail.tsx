@@ -7,6 +7,7 @@ import { meanwhile } from '@/utils/time';
 import { Badge } from '@/components/ui/Badge';
 import { CategoryTag } from '@/components/ui/Category';
 import { SourceList } from '@/components/ui/SourceList';
+import { EraScene } from '@/components/scenes/EraScene';
 
 interface Props {
   event: HistoricalEvent;
@@ -48,6 +49,8 @@ export function EventDetail({ event, onSelectEvent, context, headingLevel = 'h2'
           </div>
         </dl>
       </div>
+
+      <EraScene region={event.region} year={event.year} variant="compact" />
 
       <p className="body-copy">{event.summary}</p>
 

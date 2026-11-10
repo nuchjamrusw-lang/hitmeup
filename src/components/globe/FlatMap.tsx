@@ -1,13 +1,30 @@
-import { useMemo, useRef, useState } from 'react';
+import { memo, useMemo, useRef, useState } from 'react';
 import type { HistoricalEvent, RegionId } from '@/types';
 import { regions } from '@/data/regions';
 import type { PolityCentre } from '@/data/polityCentres';
 import { regionAt, projectEquirect } from '@/utils/geo';
-import { defaultPalette, landPath } from './landData';
+import { paintLandCanvas } from './landData';
 import { cn } from '@/utils/cn';
 
 const W = 1000;
 const H = 500;
+
+/**
+ * The coastline is rasterised once (same drawing as the globe texture) and reused.
+ * A single very large SVG path would be re-painted on every frame while the
+ * year slider moves, which is slow on low-powered devices.
+ */
+let landImage: string | null = null;
+function getLandImage() {
+  if (!landImage) {
+    try {
+      landImage = paintLandCanvas(2000, 1000).toDataURL('image/png');
+    } catch {
+      landImage = '';
+    }
+  }
+  return landImage;
+}
 
 interface Props {
   events?: HistoricalEvent[];
@@ -27,7 +44,7 @@ interface Props {
  * Equirectangular 2D map. Serves as the fallback when WebGL is unavailable
  * and as the answer surface for map-based worksheet questions.
  */
-export default function FlatMap({
+function FlatMap({
   events = [],
   selectedRegion,
   selectedEventId,
@@ -39,7 +56,7 @@ export default function FlatMap({
   className,
   ariaLabel = 'World map',
 }: Props) {
-  const d = useMemo(() => landPath(W, H), []);
+  const land = useMemo(getLandImage, []);
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<string | null>(null);
   const viewBox = crop ? `0 ${H * (90 - 75) / 180} ${W} ${H * (150 / 180)}` : `0 0 ${W} ${H}`;
@@ -69,14 +86,8 @@ export default function FlatMap({
       onClick={handleClick}
       preserveAspectRatio="xMidYMid meet"
     >
-      <rect x={0} y={0} width={W} height={H} fill={defaultPalette.ocean} />
-      {Array.from({ length: 13 }, (_, i) => -180 + i * 30).map((lon) => (
-        <line key={`m${lon}`} x1={((lon + 180) / 360) * W} x2={((lon + 180) / 360) * W} y1={0} y2={H} stroke={defaultPalette.grid} strokeWidth={0.6} />
-      ))}
-      {[-60, -30, 0, 30, 60].map((lat) => (
-        <line key={`p${lat}`} x1={0} x2={W} y1={((90 - lat) / 180) * H} y2={((90 - lat) / 180) * H} stroke={defaultPalette.grid} strokeWidth={lat === 0 ? 1 : 0.6} />
-      ))}
-      <path d={d} fill={defaultPalette.land} stroke={defaultPalette.coast} strokeWidth={0.7} fillRule="evenodd" className="cursor-pointer" />
+      <rect x={0} y={0} width={W} height={H} fill="#D9E1E8" />
+      {land && <image href={land} x={0} y={0} width={W} height={H} preserveAspectRatio="none" style={{ cursor: 'pointer' }} />}
 
       {polities.map((p) => {
         const [x, y] = projectEquirect(p.lat, p.lon, W, H);
@@ -161,3 +172,5 @@ export default function FlatMap({
     </svg>
   );
 }
+
+export default memo(FlatMap);

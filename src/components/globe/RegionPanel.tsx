@@ -6,6 +6,7 @@ import { historicalEvents } from '@/data/historicalEvents';
 import { eventInWindow, yearDistance } from '@/utils/time';
 import { Badge } from '@/components/ui/Badge';
 import { CategoryTag } from '@/components/ui/Category';
+import { EraScene } from '@/components/scenes/EraScene';
 
 const domainOrder: DevelopmentDomain[] = ['Art', 'Science', 'Trade', 'Culture'];
 
@@ -43,6 +44,8 @@ export function RegionPanel({
           Modern geographic area used for navigation: {region.modernScope}.
         </p>
       </div>
+
+      <EraScene region={region.id} year={year} />
 
       <section>
         <h3 className="eyebrow mb-2">Historical overview · {era.from}–{era.to}</h3>

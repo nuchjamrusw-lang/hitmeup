@@ -15,6 +15,7 @@ import { PageLoading } from '@/components/ui/Loading';
 const ExploreWorld = lazy(() => import('@/pages/ExploreWorld'));
 // Charts are only needed on the progress page.
 const Progress = lazy(() => import('@/pages/Progress'));
+const SceneGallery = lazy(() => import('@/pages/SceneGallery'));
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -41,6 +42,7 @@ export default function App() {
           <Route path="/progress" element={<Progress />} />
           <Route path="/references" element={<References />} />
           <Route path="/overview" element={<Navigate to="/" replace />} />
+          {import.meta.env.DEV && <Route path="/dev/scenes" element={<SceneGallery />} />}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>

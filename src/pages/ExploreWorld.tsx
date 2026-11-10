@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Box, Map as MapIcon, Minus, Plus, RotateCcw } from 'lucide-react';
 import type { RegionId } from '@/types';
@@ -8,6 +8,8 @@ import { polityCentres } from '@/data/polityCentres';
 import { clampYear, eventInWindow } from '@/utils/time';
 import { useWebGL } from '@/hooks/useWebGL';
 import { useProgress } from '@/hooks/useProgress';
+import { useYear } from '@/hooks/useYear';
+import { EraScene } from '@/components/scenes/EraScene';
 import { YearSelector } from '@/components/shared/YearSelector';
 import { EventDetail } from '@/components/shared/EventDetail';
 import { RegionPanel } from '@/components/globe/RegionPanel';
@@ -20,13 +22,16 @@ import { cn } from '@/utils/cn';
 const Globe3D = lazy(() => import('@/components/globe/Globe3D'));
 
 const WINDOWS = [10, 25, 50];
+// Stable empty arrays keep memoised map components from re-rendering.
+const NO_EVENTS: never[] = [];
+const NO_POLITIES: never[] = [];
 
 export default function ExploreWorld() {
   const [params, setParams] = useSearchParams();
   const webgl = useWebGL();
   const { dispatch } = useProgress();
 
-  const year = clampYear(Number(params.get('year') ?? DEFAULT_YEAR) || DEFAULT_YEAR);
+  const urlYear = clampYear(Number(params.get('year') ?? DEFAULT_YEAR) || DEFAULT_YEAR);
   const regionParam = params.get('region') as RegionId | null;
   const region = regionParam && regionById[regionParam] ? regionById[regionParam] : null;
   const eventParam = params.get('event');
@@ -42,18 +47,27 @@ export default function ExploreWorld() {
 
   const update = useCallback(
     (patch: Record<string, string | null>) => {
-      const next = new URLSearchParams(params);
-      for (const [k, v] of Object.entries(patch)) {
-        if (v === null) next.delete(k);
-        else next.set(k, v);
-      }
-      setParams(next, { replace: true });
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          for (const [k, v] of Object.entries(patch)) {
+            if (v === null) next.delete(k);
+            else next.set(k, v);
+          }
+          return next;
+        },
+        { replace: true },
+      );
     },
-    [params, setParams],
+    [setParams],
   );
 
-  const visibleEvents = useMemo(() => historicalEvents.filter((e) => eventInWindow(e, year, windowYears)), [year, windowYears]);
-  const visiblePolities = useMemo(() => polityCentres.filter((p) => year >= p.from && year <= p.to), [year]);
+  // Instant slider feedback; the heavy globe and panels follow a deferred copy.
+  const { year, setYear, animateTo } = useYear(urlYear, (y) => update({ year: String(y) }));
+  const dYear = useDeferredValue(year);
+
+  const visibleEvents = useMemo(() => historicalEvents.filter((e) => eventInWindow(e, dYear, windowYears)), [dYear, windowYears]);
+  const visiblePolities = useMemo(() => polityCentres.filter((p) => dYear >= p.from && dYear <= p.to), [dYear]);
   const eventYears = useMemo(() => historicalEvents.map((e) => e.year), []);
 
   useEffect(() => {
@@ -66,11 +80,8 @@ export default function ExploreWorld() {
     return null;
   }, [event, region]);
 
-  const selectRegion = (id: RegionId) => update({ region: id, event: null });
-  const selectEvent = (id: string) => {
-    const e = eventById[id];
-    update({ event: id, region: e.region });
-  };
+  const selectRegion = useCallback((id: RegionId) => update({ region: id, event: null }), [update]);
+  const selectEvent = useCallback((id: string) => update({ event: id, region: eventById[id].region }), [update]);
 
   const toolBtn = 'inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-medium transition-colors';
 
@@ -159,8 +170,8 @@ export default function ExploreWorld() {
                 </ErrorBoundary>
               ) : (
                 <FlatMap
-                  events={showEvents ? visibleEvents : []}
-                  polities={showPolities ? visiblePolities : []}
+                  events={showEvents ? visibleEvents : NO_EVENTS}
+                  polities={showPolities ? visiblePolities : NO_POLITIES}
                   selectedRegion={region?.id ?? null}
                   selectedEventId={event?.id ?? null}
                   onSelectRegion={selectRegion}
@@ -186,7 +197,7 @@ export default function ExploreWorld() {
             </div>
           </div>
 
-          <YearSelector year={year} onChange={(y) => update({ year: String(y) })} eventYears={eventYears} />
+          <YearSelector year={year} onChange={setYear} onJump={animateTo} eventYears={eventYears} />
 
           <div className="flex flex-wrap items-center gap-2 text-[12px] text-ink-muted">
             <span>Show events within</span>
@@ -219,7 +230,7 @@ export default function ExploreWorld() {
               <button type="button" onClick={() => update({ region: null })} className="mb-4 inline-flex items-center gap-1 text-[12px] font-medium text-ink-muted hover:text-ink">
                 <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> All regions
               </button>
-              <RegionPanel region={region} year={year} window={windowYears} onSelectEvent={selectEvent} />
+              <RegionPanel region={region} year={dYear} window={windowYears} onSelectEvent={selectEvent} />
             </div>
           ) : (
             <div>
@@ -229,14 +240,17 @@ export default function ExploreWorld() {
                 Select a region on the globe or from the list below. Regions are modern geographic areas used for navigation; inside each one you will find the
                 kingdoms, empires, dynasties and city-states of the time.
               </p>
-              <ul className="mt-5 divide-y divide-line rounded-lg border border-line">
+              <ul className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                 {regions.map((r) => {
                   const count = visibleEvents.filter((e) => e.region === r.id).length;
                   return (
                     <li key={r.id}>
-                      <button type="button" onClick={() => selectRegion(r.id)} className="flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-mist">
-                        <span className="text-[14px] text-ink">{r.name}</span>
-                        <span className="text-[11px] text-ink-muted">{count} {count === 1 ? 'event' : 'events'} near {year}</span>
+                      <button type="button" onClick={() => selectRegion(r.id)} className="group block w-full text-left">
+                        <EraScene region={r.id} year={dYear} variant="compact" className="transition-colors group-hover:border-ink-faint" />
+                        <span className="mt-1.5 flex items-center justify-between px-0.5">
+                          <span className="text-[14px] font-medium text-ink group-hover:text-bronze-dark">{r.name}</span>
+                          <span className="text-[11px] text-ink-muted">{count} {count === 1 ? 'event' : 'events'} near {dYear}</span>
+                        </span>
                       </button>
                     </li>
                   );

@@ -5,7 +5,10 @@ import { cn } from '@/utils/cn';
 
 interface Props {
   year: number;
+  /** Immediate change (dragging, ±1, typing). */
   onChange: (y: number) => void;
+  /** Animated jump (±10, period markers). Falls back to onChange. */
+  onJump?: (y: number) => void;
   compact?: boolean;
   /** Optional: years that have events, drawn as small ticks. */
   eventYears?: number[];
@@ -13,8 +16,9 @@ interface Props {
 
 const pct = (y: number) => ((y - YEAR_MIN) / (YEAR_MAX - YEAR_MIN)) * 100;
 
-export function YearSelector({ year, onChange, compact, eventYears = [] }: Props) {
+export function YearSelector({ year, onChange, onJump, compact, eventYears = [] }: Props) {
   const set = (y: number) => onChange(clampYear(y));
+  const jump = (y: number) => (onJump ?? onChange)(clampYear(y));
   const stepBtn = 'inline-flex h-8 w-8 items-center justify-center rounded-md border border-line bg-surface text-ink-soft hover:bg-mist hover:text-ink disabled:opacity-40';
 
   return (
@@ -30,7 +34,7 @@ export function YearSelector({ year, onChange, compact, eventYears = [] }: Props
           <span className="hidden text-xs text-ink-muted sm:inline">{periodName(year)}</span>
         </div>
         <div className="flex items-center gap-1.5" role="group" aria-label="Change year">
-          <button type="button" className={stepBtn} onClick={() => set(year - 10)} disabled={year <= YEAR_MIN} aria-label="Back 10 years">
+          <button type="button" className={stepBtn} onClick={() => jump(year - 10)} disabled={year <= YEAR_MIN} aria-label="Back 10 years">
             <ChevronsLeft className="h-4 w-4" />
           </button>
           <button type="button" className={stepBtn} onClick={() => set(year - 1)} disabled={year <= YEAR_MIN} aria-label="Previous year">
@@ -51,7 +55,7 @@ export function YearSelector({ year, onChange, compact, eventYears = [] }: Props
           <button type="button" className={stepBtn} onClick={() => set(year + 1)} disabled={year >= YEAR_MAX} aria-label="Next year">
             <ChevronRight className="h-4 w-4" />
           </button>
-          <button type="button" className={stepBtn} onClick={() => set(year + 10)} disabled={year >= YEAR_MAX} aria-label="Forward 10 years">
+          <button type="button" className={stepBtn} onClick={() => jump(year + 10)} disabled={year >= YEAR_MAX} aria-label="Forward 10 years">
             <ChevronsRight className="h-4 w-4" />
           </button>
         </div>
@@ -90,7 +94,7 @@ export function YearSelector({ year, onChange, compact, eventYears = [] }: Props
           <button
             key={m.year}
             type="button"
-            onClick={() => set(m.year)}
+            onClick={() => jump(m.year)}
             className={cn(
               'rounded-full border px-2.5 py-1 text-[11px] transition-colors',
               year === m.year ? 'border-ink bg-ink text-white' : 'border-line bg-paper text-ink-soft hover:border-ink-faint hover:text-ink',

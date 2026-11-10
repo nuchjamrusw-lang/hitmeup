@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { X } from 'lucide-react';
 import type { EventCategory, HistoricalEvent, RegionGroup } from '@/types';
@@ -10,6 +10,9 @@ import { EventDetail } from '@/components/shared/EventDetail';
 import { categories, categoryMeta, CategoryTag } from '@/components/ui/Category';
 import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/utils/cn';
+import { useYear } from '@/hooks/useYear';
+import { EraScene } from '@/components/scenes/EraScene';
+import type { RegionId } from '@/types';
 
 const WINDOWS = [10, 25, 50, 100];
 const pct = (y: number) => ((y - YEAR_MIN) / (YEAR_MAX - YEAR_MIN)) * 100;
@@ -105,9 +108,87 @@ function Swimlanes({
   );
 }
 
+
+/** Side-by-side region columns. Memoised so slider drags only re-render it when the deferred year changes. */
+const EventColumns = memo(function EventColumns({
+  events,
+  groups,
+  year,
+  selectedId,
+  compact,
+  onSelect,
+}: {
+  events: HistoricalEvent[];
+  groups: RegionGroup[];
+  year: number;
+  selectedId: string | null;
+  compact: boolean;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <>
+          {events.length === 0 ? (
+            <div className="panel p-8 text-center text-sm text-ink-muted">No events match these filters in this range. Try widening the range or clearing filters.</div>
+          ) : (
+            <div className={cn('grid gap-4 md:grid-cols-2', !compact && '2xl:grid-cols-3')}>
+              {groups.map((g) => {
+                const list = events.filter((e) => groupOf(e) === g);
+                return (
+                  <div key={g} className="panel p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <h3 className="font-serif text-lg text-ink">{g}</h3>
+                      <span className="text-[11px] text-ink-muted">{list.length}</span>
+                    </div>
+                    <EraScene region={sceneRegionFor(g, list)} year={year} variant="compact" className="mb-4" />
+                    {list.length === 0 ? (
+                      <p className="text-[13px] text-ink-faint">No events in this range.</p>
+                    ) : (
+                      <ol className="relative space-y-2 border-l border-line pl-4">
+                        {list.map((e) => (
+                          <li key={e.id} className="relative">
+                            <span className="absolute -left-[21px] top-3 h-2 w-2 rounded-full border-2 border-surface" style={{ background: categoryMeta[e.category].color }} aria-hidden />
+                            <button
+                              type="button"
+                              onClick={() => onSelect(e.id)}
+                              className={cn('w-full rounded-lg border px-3 py-2.5 text-left transition-colors', selectedId === e.id ? 'border-ink bg-mist' : 'border-transparent hover:border-line hover:bg-paper')}
+                              aria-pressed={selectedId === e.id}
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-[11px] font-semibold tabular-nums text-ink-soft">{e.dateLabel}</span>
+                                {e.approximate && <Badge tone="warn">approx.</Badge>}
+                              </div>
+                              <span className="mt-0.5 block text-[14px] font-medium leading-snug text-ink">{e.title}</span>
+                              <span className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-ink-muted">
+                                <span>{e.location.name}</span>
+                                <CategoryTag category={e.category} />
+                              </span>
+                              <span className="mt-1.5 line-clamp-2 block text-[12.5px] leading-5 text-ink-muted">{e.summary}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+    </>
+  );
+});
+
+/** For a group with several regions (Asia, Americas), illustrate the busiest one in the range. */
+function sceneRegionFor(g: RegionGroup, list: HistoricalEvent[]): RegionId {
+  const counts = new Map<RegionId, number>();
+  list.forEach((e) => counts.set(e.region, (counts.get(e.region) ?? 0) + 1));
+  const best = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  if (best) return best;
+  return g === 'Asia' ? 'east-asia' : g === 'Americas' ? 'central-america' : g === 'Middle East' ? 'middle-east' : g === 'Africa' ? 'africa' : 'europe';
+}
+
 export default function Timeline() {
   const [params, setParams] = useSearchParams();
-  const year = clampYear(Number(params.get('year') ?? DEFAULT_YEAR) || DEFAULT_YEAR);
+  const urlYear = clampYear(Number(params.get('year') ?? DEFAULT_YEAR) || DEFAULT_YEAR);
   const windowYears = WINDOWS.includes(Number(params.get('range'))) ? Number(params.get('range')) : 25;
   const groupParam = params.get('group');
   const activeGroups: RegionGroup[] = groupParam ? (groupParam.split(',').filter((g) => regionGroups.includes(g as RegionGroup)) as RegionGroup[]) : regionGroups;
@@ -116,11 +197,21 @@ export default function Timeline() {
   const selectedId = params.get('event');
   const selected = selectedId ? eventById[selectedId] ?? null : null;
 
-  const update = (patch: Record<string, string | null>) => {
-    const next = new URLSearchParams(params);
-    for (const [k, v] of Object.entries(patch)) (v === null ? next.delete(k) : next.set(k, v));
-    setParams(next, { replace: true });
-  };
+  const update = useCallback(
+    (patch: Record<string, string | null>) =>
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          for (const [k, v] of Object.entries(patch)) (v === null ? next.delete(k) : next.set(k, v));
+          return next;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
+  // The slider and cursor follow `year` instantly; the event lists follow a deferred copy.
+  const { year, setYear, animateTo } = useYear(urlYear, (y) => update({ year: String(y) }));
+  const dYear = useDeferredValue(year);
 
   const toggleGroup = (g: RegionGroup) => {
     const set = new Set(activeGroups);
@@ -140,7 +231,7 @@ export default function Timeline() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [groupParam, catParam],
   );
-  const inWindow = useMemo(() => filtered.filter((e) => eventInWindow(e, year, windowYears)).sort((a, b) => a.year - b.year), [filtered, year, windowYears]);
+  const inWindow = useMemo(() => filtered.filter((e) => eventInWindow(e, dYear, windowYears)).sort((a, b) => a.year - b.year), [filtered, dYear, windowYears]);
 
   useEffect(() => {
     if (!selected) return;
@@ -148,6 +239,9 @@ export default function Timeline() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   });
+
+  const eventYears = useMemo(() => historicalEvents.map((e) => e.year), []);
+  const selectEvent = useCallback((id: string) => update({ event: id }), [update]);
 
   const chip = (on: boolean) =>
     cn('rounded-full border px-3 py-1 text-[12px] transition-colors', on ? 'border-ink bg-ink text-white' : 'border-line bg-surface text-ink-soft hover:border-ink-faint');
@@ -163,8 +257,8 @@ export default function Timeline() {
       </header>
 
       <div className="space-y-4">
-        <YearSelector year={year} onChange={(y) => update({ year: String(y) })} eventYears={historicalEvents.map((e) => e.year)} />
-        <Swimlanes events={filtered} year={year} windowYears={windowYears} selectedId={selectedId} onSelect={(id) => update({ event: id })} onYear={(y) => update({ year: String(y) })} />
+        <YearSelector year={year} onChange={setYear} onJump={animateTo} eventYears={eventYears} />
+        <Swimlanes events={filtered} year={year} windowYears={windowYears} selectedId={selectedId} onSelect={(id) => update({ event: id })} onYear={animateTo} />
 
         <div className="panel space-y-3 p-4">
           <div className="flex flex-wrap items-center gap-2">
@@ -204,57 +298,20 @@ export default function Timeline() {
           <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
             <div>
               <h2 id="same-time" className="h-section">
-                {YEAR_MIN < year - windowYears ? year - windowYears : YEAR_MIN}–{Math.min(YEAR_MAX, year + windowYears)}: side by side
+                {Math.max(YEAR_MIN, dYear - windowYears)}–{Math.min(YEAR_MAX, dYear + windowYears)}: side by side
               </h2>
               <p className="mt-1 text-[13px] text-ink-muted">{inWindow.length} events · compare what was happening in each part of the world at about the same time.</p>
             </div>
           </div>
 
-          {inWindow.length === 0 ? (
-            <div className="panel p-8 text-center text-sm text-ink-muted">No events match these filters in this range. Try widening the range or clearing filters.</div>
-          ) : (
-            <div className={cn('grid gap-4 md:grid-cols-2', !selected && '2xl:grid-cols-3')}>
-              {activeGroups.map((g) => {
-                const list = inWindow.filter((e) => groupOf(e) === g);
-                return (
-                  <div key={g} className="panel p-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <h3 className="font-serif text-lg text-ink">{g}</h3>
-                      <span className="text-[11px] text-ink-muted">{list.length}</span>
-                    </div>
-                    {list.length === 0 ? (
-                      <p className="text-[13px] text-ink-faint">No events in this range.</p>
-                    ) : (
-                      <ol className="relative space-y-2 border-l border-line pl-4">
-                        {list.map((e) => (
-                          <li key={e.id} className="relative">
-                            <span className="absolute -left-[21px] top-3 h-2 w-2 rounded-full border-2 border-surface" style={{ background: categoryMeta[e.category].color }} aria-hidden />
-                            <button
-                              type="button"
-                              onClick={() => update({ event: e.id })}
-                              className={cn('w-full rounded-lg border px-3 py-2.5 text-left transition-colors', selectedId === e.id ? 'border-ink bg-mist' : 'border-transparent hover:border-line hover:bg-paper')}
-                              aria-pressed={selectedId === e.id}
-                            >
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-[11px] font-semibold tabular-nums text-ink-soft">{e.dateLabel}</span>
-                                {e.approximate && <Badge tone="warn">approx.</Badge>}
-                              </div>
-                              <span className="mt-0.5 block text-[14px] font-medium leading-snug text-ink">{e.title}</span>
-                              <span className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-ink-muted">
-                                <span>{e.location.name}</span>
-                                <CategoryTag category={e.category} />
-                              </span>
-                              <span className="mt-1.5 line-clamp-2 block text-[12.5px] leading-5 text-ink-muted">{e.summary}</span>
-                            </button>
-                          </li>
-                        ))}
-                      </ol>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <EventColumns
+            events={inWindow}
+            groups={activeGroups}
+            year={dYear}
+            selectedId={selectedId}
+            compact={!!selected}
+            onSelect={selectEvent}
+          />
         </section>
 
         {selected && (

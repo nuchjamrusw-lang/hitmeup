@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import { Html, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -187,7 +187,7 @@ function CameraRig({ focus, command }: { focus: { lat: number; lon: number } | n
   return null;
 }
 
-export default function Globe3D(props: GlobeProps) {
+function Globe3D(props: GlobeProps) {
   const { events, selectedRegion, selectedEventId, focus, polities, showEvents, showPolities, command, onSelectRegion, onSelectEvent } = props;
   const initial = useMemo(() => latLonToVec3(25, 20, 2.7), []);
 
@@ -251,3 +251,7 @@ export default function Globe3D(props: GlobeProps) {
     </Canvas>
   );
 }
+
+// Memoised so that dragging the year slider does not re-render the 3D scene
+// until the (deferred) list of events actually changes.
+export default memo(Globe3D);
